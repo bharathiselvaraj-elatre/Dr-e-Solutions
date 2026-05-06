@@ -14,7 +14,12 @@ function loadJsonIfPresent(filePath, fallback) {
     return fallback;
   }
 
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    console.warn(`Could not parse JSON report at ${filePath}: ${error.message}`);
+    return fallback;
+  }
 }
 
 function collectFailures(report) {

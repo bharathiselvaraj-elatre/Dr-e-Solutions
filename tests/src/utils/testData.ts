@@ -192,8 +192,8 @@ export function generateLeadTestData(): LeadTestData {
     addressLine2: 'Perungudi',
     addressLine3: `${suffix.slice(2, 5)}`,
     country: 'India',
-    state: 'Andaman and Nicobar Islands',
-    city: 'Nicobar',
+    state: 'Tamil Nadu',
+    city: 'Thanjavur',
     postalCode: '600040',
     notes: 'New patient',
   };

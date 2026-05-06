@@ -20,6 +20,16 @@ module.exports = {
     format: ["progress", "summary", "json:reports/cucumber-report.json"],
     timeout: 60000
   },
+  ownerAccess: {
+    require: [
+      "tests/src/hooks/**/*.ts",
+      "tests/src/step-definitions/**/*.ts"
+    ],
+    requireModule: ["ts-node/register"],
+    paths: ["tests/features/owner/owner-smoke.feature"],
+    format: ["progress", "summary", "json:reports/cucumber-report.json"],
+    timeout: 60000
+  },
   logout: {
     require: [
       "tests/src/hooks/**/*.ts",

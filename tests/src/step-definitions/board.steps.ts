@@ -19,7 +19,7 @@ Given('user opens create board form', async function (this: CustomWorld) {
   const boardPage = getBoardPage(this);
   await boardPage.navigateToBoard();
   await boardPage.switchBranch(this.branchData.branchName);
-  await boardPage.openCreateBoardForm();
+  await boardPage.openCreateBoardForm(this.branchData.branchName);
 });
 
 When('user fills board form with auto generated data', async function (this: CustomWorld) {

@@ -6,6 +6,7 @@
   "scripts": {
     "test": "cucumber-js -c cucumber.js",
     "test:feature:login": "node runSingleSuite.js login",
+    "test:feature:owner-access": "node runSingleSuite.js ownerAccess",
     "test:feature:logout": "node runSingleSuite.js logout",
     "test:feature:branch": "node runSingleSuite.js branch",
     "test:feature:users": "node runSingleSuite.js user",

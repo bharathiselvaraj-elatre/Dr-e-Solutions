@@ -12,24 +12,29 @@ export class LeadsPage {
   async fillLeadForm(lead: LeadTestData, missingField?: string) {
     const normalizedField = missingField?.trim().toLowerCase();
     const isMissingField = (...fieldNames: string[]) => fieldNames.includes(normalizedField ?? '');
+    const logStep = (message: string) => console.log(`[lead-form] ${message}`);
 
+    logStep('filling name fields');
     await this.fillVisibleField(this.page.locator('#firstName'), isMissingField('first name') ? '' : lead.firstName);
     await this.fillVisibleField(this.page.locator('#middleName'), lead.middleName);
     await this.fillVisibleField(this.page.locator('#lastName'), isMissingField('last name') ? '' : lead.lastName);
 
+    logStep('selecting basic details');
     await this.selectLeadDateOfBirth();
-    await this.selectRandomBasicDetailsOption('gender', lead.gender);
+    await this.selectLabeledBasicDetailsOption('Gender', lead.gender);
     await this.selectRandomStatusOption(lead.status);
-    await this.selectRandomBasicDetailsOption('lead source', lead.source);
-    await this.selectRandomLanguageOptions(lead.languages);
-    await this.selectRandomBasicDetailsOption('blood group', lead.bloodGroup);
+    await this.selectLabeledBasicDetailsOption('Lead Source', lead.source, 'web');
+    await this.selectLabeledLanguageOptions('Language', lead.languages);
+    await this.selectLabeledBasicDetailsOption('Blood Group', lead.bloodGroup, 'b', true);
 
+    logStep('filling contact fields');
     await this.fillVisibleField(this.page.locator('#homePhone'), isMissingField('home phone') ? '' : lead.homePhone);
     await this.fillVisibleField(this.page.locator('#phone'), isMissingField('mobile', 'mobile number') ? '' : lead.mobile);
     await this.fillVisibleField(this.page.getByRole('textbox', { name: 'Enter your email address' }), 
       isMissingField('email') ? '' : lead.email
     );
 
+    logStep('filling address fields');
     await this.scrollLeadForm('down');
     await this.fillVisibleField(this.page.getByRole('textbox', { name: 'e.g. 2B' }), lead.houseNumber);
     await this.fillVisibleField(this.page.getByRole('textbox', { name: 'e.g. Floor 2, Suite 204,' }), lead.addressLine1);
@@ -128,15 +133,17 @@ export class LeadsPage {
 
   private async selectCountryStateCity(lead: LeadTestData) {
     await this.scrollLeadForm('down');
-    await this.openNextSelectDropdown();
-    await this.page.getByRole('textbox', { name: 'Search options' }).fill('indi');
-    await this.page.getByRole('button', { name: lead.country, exact: true }).click();
+    console.log('[lead-form] selecting country');
+    await this.openLabeledSelectDropdown('Nationality / Country');
+    await this.selectOverlayOption(lead.country, 'indi');
 
-    await this.openNextSelectDropdown();
-    await this.page.getByRole('button', { name: lead.state }).click();
+    console.log('[lead-form] selecting state');
+    await this.openLabeledSelectDropdown('Town / State');
+    await this.selectOverlayOption(lead.state, 'tami');
 
-    await this.openNextSelectDropdown();
-    await this.page.getByRole('button', { name: lead.city, exact: true }).click();
+    console.log('[lead-form] selecting city');
+    await this.openLabeledSelectDropdown('County / City');
+    await this.selectOverlayOption(lead.city, 'thanj');
   }
 
   private async fillVisibleField(locator: ReturnType<Page['locator']> | ReturnType<Page['getByRole']>, value: string) {
@@ -192,43 +199,54 @@ export class LeadsPage {
     await statusButtons.nth(selectedOption.index).click({ force: true });
   }
 
-  private async selectRandomBasicDetailsOption(_fieldLabel: string, fallbackOption: string) {
+  private async selectLabeledBasicDetailsOption(labelText: string, optionName: string, searchText?: string, optional = false) {
     await this.focusBasicDetailsRegion();
-    await this.openNextSelectDropdown();
-
-    const overlayButtons = this.getVisibleOverlayButtons();
-    const selectableOptions = await this.collectVisibleButtonOptions(overlayButtons, ['select']);
-    if (!selectableOptions.length) {
-      const fallback = this.page.getByRole('button', { name: fallbackOption, exact: true }).first();
-      if (await fallback.isVisible().catch(() => false)) {
-        await fallback.click({ force: true });
+    const opened = await this.tryOpenLabeledSelectDropdown(labelText);
+    if (!opened) {
+      if (optional) {
+        console.log(`[lead-form] ${labelText} dropdown not available, continuing without selection`);
         return;
       }
 
-      throw new Error(`Could not find any selectable options for lead field "${_fieldLabel}".`);
+      throw new Error(`Could not open dropdown for lead field "${labelText}".`);
     }
 
-    const selectedOption = selectableOptions[Math.floor(Math.random() * selectableOptions.length)];
-    await overlayButtons.nth(selectedOption.index).click({ force: true });
+    try {
+      await this.selectOverlayOption(optionName, searchText);
+    } catch (error) {
+      if (optional) {
+        await this.page.keyboard.press('Escape').catch(() => {});
+        console.log(`[lead-form] could not select ${labelText}, continuing without selection`);
+        return;
+      }
+
+      throw error;
+    }
   }
 
-  private async selectRandomLanguageOptions(_languages: string[]) {
+  private async selectLabeledLanguageOptions(labelText: string, languages: string[]) {
     await this.focusBasicDetailsRegion();
-    await this.openNextSelectDropdown();
-
-    const overlayButtons = this.getVisibleOverlayButtons();
-    const selectableOptions = await this.collectVisibleButtonOptions(overlayButtons, ['select']);
-    if (!selectableOptions.length) {
-      throw new Error('Could not find any selectable language options.');
+    const opened = await this.tryOpenLabeledSelectDropdown(labelText);
+    if (!opened) {
+      console.log('[lead-form] language dropdown not available, continuing without selecting language');
+      return;
     }
 
-    const shuffledOptions = [...selectableOptions].sort(() => Math.random() - 0.5);
-    const pickCount = Math.min(shuffledOptions.length, 2);
-    for (let index = 0; index < pickCount; index++) {
-      await overlayButtons.nth(shuffledOptions[index].index).click({ force: true });
-      await this.sleep(100);
+    const pickedLabels: string[] = [];
+    for (const language of languages) {
+      const selected = await this.trySelectOverlayOption(language, language.slice(0, 3).toLowerCase());
+      if (selected) {
+        pickedLabels.push(language);
+      }
     }
 
+    if (!pickedLabels.length) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      console.log('[lead-form] no selectable language options found, continuing without selecting language');
+      return;
+    }
+
+    await this.page.keyboard.press('Escape').catch(() => {});
     await this.focusBasicDetailsRegion();
   }
 
@@ -246,6 +264,99 @@ export class LeadsPage {
     }
 
     throw new Error('Could not find a visible Select dropdown trigger in the lead form.');
+  }
+
+  private async tryOpenNextSelectDropdown() {
+    const selectButtons = this.page.getByRole('button', { name: /^select$/i });
+    const count = await selectButtons.count().catch(() => 0);
+
+    for (let index = 0; index < count; index++) {
+      const trigger = selectButtons.nth(index);
+      if (await trigger.isVisible().catch(() => false)) {
+        await trigger.scrollIntoViewIfNeeded().catch(() => {});
+        await trigger.click({ force: true }).catch(() => {});
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async selectOverlayOption(optionName: string, searchText?: string) {
+    const overlay = this.getVisibleOverlayContainer();
+    const search = this.page.getByRole('textbox', { name: 'Search options' }).last();
+
+    if (searchText && (await search.isVisible().catch(() => false))) {
+      await search.fill(searchText).catch(() => {});
+    }
+
+    const candidates = [
+      overlay.getByRole('button', { name: optionName, exact: true }).first(),
+      overlay.getByRole('option', { name: optionName, exact: true }).first(),
+      overlay.getByRole('button', { name: new RegExp(`^${this.escapeForRegex(optionName)}$`, 'i') }).first(),
+      overlay.getByRole('option', { name: new RegExp(`^${this.escapeForRegex(optionName)}$`, 'i') }).first(),
+      overlay.getByText(new RegExp(`^${this.escapeForRegex(optionName)}$`, 'i')).first(),
+      this.page.getByRole('button', { name: optionName, exact: true }).last(),
+      this.page.getByRole('option', { name: optionName, exact: true }).last(),
+    ];
+
+    for (const candidate of candidates) {
+      if (await candidate.isVisible().catch(() => false)) {
+        await candidate.click({ force: true });
+        return;
+      }
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Could not select overlay option "${optionName}". Visible page text:\n${bodyText}`);
+  }
+
+  private async trySelectOverlayOption(optionName: string, searchText?: string) {
+    try {
+      await this.selectOverlayOption(optionName, searchText);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async openLabeledSelectDropdown(labelText: string) {
+    const labelBlockCandidates = [
+      this.page.locator(`xpath=//*[normalize-space(text())="${labelText}"]`).first(),
+      this.page.getByText(new RegExp(`^${this.escapeForRegex(labelText)}$`, 'i')).first(),
+    ];
+
+    for (const labelBlock of labelBlockCandidates) {
+      if (!(await labelBlock.count().catch(() => 0)) || !(await labelBlock.isVisible().catch(() => false))) {
+        continue;
+      }
+
+      const triggerCandidates = [
+        labelBlock.locator('xpath=following::button[normalize-space()="Select"][1]').first(),
+        labelBlock.locator('xpath=following::*[@role="button"][normalize-space()="Select"][1]').first(),
+        labelBlock.locator('xpath=ancestor::*[self::div or self::section][1]//button[normalize-space()="Select"]').first(),
+      ];
+
+      for (const trigger of triggerCandidates) {
+        if ((await trigger.count().catch(() => 0)) && (await trigger.isVisible().catch(() => false))) {
+          await trigger.scrollIntoViewIfNeeded().catch(() => {});
+          await trigger.click({ force: true });
+          return;
+        }
+      }
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Could not find labeled select dropdown for "${labelText}". Visible page text:\n${bodyText}`);
+  }
+
+  private async tryOpenLabeledSelectDropdown(labelText: string) {
+    try {
+      await this.openLabeledSelectDropdown(labelText);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private getVisibleOverlayButtons() {

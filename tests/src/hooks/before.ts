@@ -16,7 +16,7 @@ function getSlowMo() {
     return configured;
   }
 
-  return isHeadless() ? 0 : 100;
+  return 0;
 }
 
 Before(async function (this: CustomWorld) {
