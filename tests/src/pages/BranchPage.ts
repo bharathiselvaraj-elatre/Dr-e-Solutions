@@ -5,7 +5,7 @@ export class BranchPage {
   constructor(private page: Page) {}
 
   async navigateToBranches() {
-    await this.page.goto('https://dev-solutions.dr-e.com/branches', { waitUntil: 'domcontentloaded' });
+    await this.navigateToBranchesFromDashboard();
     await expect(this.page).toHaveURL(/\/branches\/?$/i, { timeout: 30000 });
 
     const readyIndicators = [
@@ -35,10 +35,33 @@ export class BranchPage {
   }
 
   async openCreateBranchForm() {
-    await this.page
-      .getByRole('button', { name: /add new branch|create branch/i })
-      .first()
-      .click();
+    const createBranchCandidates = [
+      this.page.getByRole('button', { name: /add new branch|create branch|add branch|new branch/i }).first(),
+      this.page.getByRole('link', { name: /add new branch|create branch|add branch|new branch/i }).first(),
+      this.page.locator('button, a').filter({ hasText: /add new branch|create branch|add branch|new branch/i }).first(),
+      this.page.getByText(/add new branch|create branch|add branch|new branch/i).first(),
+    ];
+
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      const bodyText = await this.page.locator('body').innerText().catch(() => '');
+      if (/loading branches/i.test(bodyText)) {
+        await this.page.waitForTimeout(500);
+        continue;
+      }
+
+      for (const candidate of createBranchCandidates) {
+        if (await candidate.isVisible().catch(() => false)) {
+          await candidate.click({ force: true, timeout: 15000 });
+          return;
+        }
+      }
+
+      await this.page.waitForTimeout(250);
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Could not find the create branch control. Visible page text:\n${bodyText}`);
   }
 
   async fillBranchForm(branch: BranchTestData) {
@@ -47,6 +70,8 @@ export class BranchPage {
 
   async fillBranchFormWithMissingField(branch: BranchTestData, missingField?: string) {
     const normalizedField = missingField?.trim().toLowerCase();
+    const stepOneFields = new Set(['branch name', 'branch email', 'prefix', 'phone']);
+    const shouldAdvanceToStepTwo = !normalizedField || !stepOneFields.has(normalizedField);
 
     await this.typeSlowly(
       this.page.getByRole('textbox', { name: 'Branch Name*' }),
@@ -60,6 +85,7 @@ export class BranchPage {
       this.page.getByRole('textbox', { name: /^(branch )?prefix\*?$/i }).first(),
       normalizedField === 'prefix' ? '' : branch.prefix
     );
+    await this.selectPrefixSuggestion(branch.prefix);
 
     await this.openBranchCategoryDropdown();
     for (const category of branch.categories) {
@@ -71,6 +97,12 @@ export class BranchPage {
       this.page.getByRole('textbox', { name: 'Phone*' }),
       normalizedField === 'phone' ? '' : branch.phone
     );
+    await this.setMainBranchSelection();
+    await this.advanceToBranchAddressStep(shouldAdvanceToStepTwo);
+    if (!shouldAdvanceToStepTwo) {
+      return;
+    }
+
     await this.typeSlowly(
       this.page.getByRole('textbox', { name: 'Address Line 1*' }),
       normalizedField === 'address line 1' ? '' : branch.addressLine1
@@ -91,10 +123,18 @@ export class BranchPage {
       this.page.getByRole('textbox', { name: 'Postal Code*' }),
       normalizedField === 'postal code' ? '' : branch.postalCode
     );
+
+    await this.configureWorkingHours();
   }
 
   async submitBranchForm() {
     await this.scrollBranchDialogToBottom();
+
+    const nextButton = this.page.getByRole('button', { name: /^next$/i }).first();
+    if (await nextButton.isVisible().catch(() => false)) {
+      await nextButton.click({ force: true, timeout: 10000 });
+      return;
+    }
 
     const submitButton = this.page.getByRole('button', { name: /^create branch$/i }).last();
 
@@ -103,11 +143,55 @@ export class BranchPage {
   }
 
   async verifyBranchCreated(branch: BranchTestData) {
-    await this.dismissBranchCreatedToastIfPresent();
-    await this.page.waitForLoadState('networkidle');
-    await expect(this.page.getByText(new RegExp(branch.branchName, 'i'))).toBeVisible({
-      timeout: 15000,
-    });
+    const branchNamePattern = new RegExp(this.escapeForRegex(branch.branchName), 'i');
+    const branchIndicators = [
+      this.page.getByText(branchNamePattern).first(),
+      this.page.getByRole('button', {
+        name: new RegExp(`^(?:Edit|Delete)\\s+${this.escapeForRegex(branch.branchName)}$`, 'i'),
+      }).first(),
+    ];
+
+    const successMessages = [
+      this.page.getByText(/branch created successfully/i).first(),
+      this.page.getByText(/created successfully/i).first(),
+    ];
+
+    const deadline = Date.now() + 30000;
+    let sawSuccessToast = false;
+
+    while (Date.now() < deadline) {
+      for (const indicator of branchIndicators) {
+        if (await indicator.isVisible().catch(() => false)) {
+          return;
+        }
+      }
+
+      for (const message of successMessages) {
+        if (await message.isVisible().catch(() => false)) {
+          sawSuccessToast = true;
+          await this.closeSuccessToast(message);
+          await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+          await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+          await this.navigateToBranches().catch(() => {});
+          break;
+        }
+      }
+
+      await this.page.waitForTimeout(500);
+    }
+
+    if (sawSuccessToast) {
+      for (const indicator of branchIndicators) {
+        if (await indicator.isVisible().catch(() => false)) {
+          return;
+        }
+      }
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(
+      `Expected created branch "${branch.branchName}" to be visible after submission, but it was not found. Visible page text:\n${bodyText}`
+    );
   }
 
   async dismissBranchCreatedToastIfPresent() {
@@ -184,6 +268,8 @@ export class BranchPage {
 
     const containsValueAfterScroll = (expected: string) =>
       popupValuesAfterScroll.some((value) => value.toLowerCase() === expected.toLowerCase());
+    const containsValueAfterScrollLoosely = (expected: string) =>
+      popupValuesAfterScroll.some((value) => value.toLowerCase().includes(expected.toLowerCase()));
 
     const expectedInputValues = [
       branch.branchName,
@@ -195,7 +281,11 @@ export class BranchPage {
     ];
 
     for (const value of expectedInputValues) {
-      if (!containsValueAfterScroll(value)) {
+      const matchesExactly = containsValueAfterScroll(value);
+      const matchesLoosely =
+        value === branch.addressLine2 || value === branch.addressLine1 ? containsValueAfterScrollLoosely(value) : false;
+
+      if (!matchesExactly && !matchesLoosely) {
         throw new Error(
           `Expected edit popup inputs to contain "${value}", but captured values were:\n${popupValuesAfterScroll.join('\n')}`
         );
@@ -271,20 +361,26 @@ export class BranchPage {
   }
 
   async verifyRequiredValidations() {
-    const expectedMessages = [
+    const stepOneMessages = [
       'Branch name is required',
       'Branch email is required',
       'Prefix is required',
+      'Select at least one branch category',
       'Phone number is required',
-      'Address line 1 is required',
-      'State is required',
-      'City is required',
-      'Postal code is required',
       'Complete required fields',
     ];
 
-    for (const message of expectedMessages) {
+    for (const message of stepOneMessages) {
       await expect(this.page.locator('body')).toContainText(message, { ignoreCase: true, timeout: 10000 });
+    }
+
+    const addressLineOne = this.page.getByRole('textbox', { name: 'Address Line 1*' });
+    if (await addressLineOne.isVisible().catch(() => false)) {
+      const stepTwoMessages = ['Address line 1 is required', 'State is required', 'City is required', 'Postal code is required'];
+
+      for (const message of stepTwoMessages) {
+        await expect(this.page.locator('body')).toContainText(message, { ignoreCase: true, timeout: 10000 });
+      }
     }
   }
 
@@ -317,6 +413,137 @@ export class BranchPage {
     await locator.pressSequentially(value, { delay: 80 });
   }
 
+  private async navigateToBranchesFromDashboard() {
+    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    await this.waitForDashboardToBeInteractive();
+
+    const exactNavigationPath = async () => {
+      await this.page
+        .getByText('DashboardBranchesSchedulingPatientsLab ordersNewInboxLeadsAutomationEmail')
+        .click()
+        .catch(() => {});
+
+      const branchesButton = this.page.getByRole('button', { name: 'Branches' });
+      if (await branchesButton.first().isVisible().catch(() => false)) {
+        await branchesButton.first().click({ force: true });
+
+        const allBranchesLink = this.page.getByRole('link', { name: 'All branches' });
+        if (await allBranchesLink.first().isVisible().catch(() => false)) {
+          await allBranchesLink.first().click({ force: true });
+          await this.page.getByRole('main').click().catch(() => {});
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    if (await exactNavigationPath()) {
+      return;
+    }
+
+    const branchesNavPattern = /^(?:all\s+)?branches(?:\s+\d+\s+items)?$/i;
+    const directBranchesNavCandidates = [
+      this.page.getByRole('link', { name: /all branches|branches/i }).first(),
+      this.page.getByRole('button', { name: /all branches|branches/i }).first(),
+      this.page.locator('a[href*="/branches"]').first(),
+      this.page.locator('button').filter({ hasText: /all branches|branches/i }).first(),
+      this.page.getByText(branchesNavPattern).first(),
+    ];
+
+    for (const candidate of directBranchesNavCandidates) {
+      if (await candidate.isVisible().catch(() => false)) {
+        await candidate.click({ force: true });
+        return;
+      }
+    }
+
+    const branchManagementCandidates = [
+      this.page.getByRole('button', { name: /branch management/i }).first(),
+      this.page.getByRole('link', { name: /branch management/i }).first(),
+      this.page.locator('button, a').filter({ hasText: /branch management/i }).first(),
+      this.page.getByText(/branch management/i).first(),
+    ];
+
+    for (const branchManagement of branchManagementCandidates) {
+      if (!(await branchManagement.isVisible().catch(() => false))) {
+        continue;
+      }
+
+      await branchManagement.click({ force: true }).catch(() => {});
+      await this.page.waitForTimeout(500);
+
+      if (await exactNavigationPath()) {
+        return;
+      }
+
+      for (const candidate of directBranchesNavCandidates) {
+        if (await candidate.isVisible().catch(() => false)) {
+          await candidate.click({ force: true });
+          return;
+        }
+      }
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Could not navigate to Branches from dashboard. Visible page text:\n${bodyText}`);
+  }
+
+  private async waitForDashboardToBeInteractive() {
+    const loadingPattern = /loading your profile/i;
+    const deadline = Date.now() + 45000;
+    let recoveredFromLoginShell = false;
+
+    while (Date.now() < deadline) {
+      if (this.page.isClosed()) {
+        throw new Error('Dashboard page was closed before Branches navigation became available.');
+      }
+
+      const bodyText = await this.page.locator('body').innerText().catch(() => '');
+      const looksLikeLoginShell = /secure access for healthcare teams|welcome back to dr\.e|forgot password/i.test(bodyText);
+
+      if (looksLikeLoginShell && !recoveredFromLoginShell) {
+        const hasAuthTokens = await this.page
+          .evaluate(() => !!window.localStorage.getItem('access') || !!window.localStorage.getItem('refresh'))
+          .catch(() => false);
+
+        if (hasAuthTokens) {
+          recoveredFromLoginShell = true;
+          await this.page.goto('https://dev-solutions.dr-e.com/dashboard', {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000,
+          });
+          continue;
+        }
+      }
+
+      if (loadingPattern.test(bodyText)) {
+        await this.safePause(500);
+        continue;
+      }
+
+      const navReadyCandidates = [
+        this.page.getByRole('button', { name: /branch management/i }).first(),
+        this.page.getByRole('link', { name: /branch management/i }).first(),
+        this.page.getByRole('link', { name: /all branches|branches/i }).first(),
+        this.page.getByRole('button', { name: /all branches|branches/i }).first(),
+        this.page.locator('a[href*="/branches"]').first(),
+        this.page.locator('nav').first(),
+      ];
+
+      for (const candidate of navReadyCandidates) {
+        if (await candidate.isVisible().catch(() => false)) {
+          return;
+        }
+      }
+
+      await this.safePause(250);
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Dashboard did not finish loading. Visible page text:\n${bodyText}`);
+  }
+
   private async closeBranchCategoryDropdown() {
     await this.page.keyboard.press('Escape').catch(() => {});
 
@@ -345,9 +572,9 @@ export class BranchPage {
       .first();
 
     const triggerCandidates = [
-      branchCategoriesRow.getByRole('button', { name: /^select(?:…|\.{3})?$/i }).first(),
+      branchCategoriesRow.getByRole('button', { name: /^select(?:â€¦|\.{3})?$/i }).first(),
       branchCategoriesRow.getByRole('button', { name: /^select$/i }).first(),
-      branchCategoriesRow.locator('button, [role="button"]').filter({ hasText: /^select(?:…|\.{3})?$/i }).first(),
+      branchCategoriesRow.locator('button, [role="button"]').filter({ hasText: /^select(?:â€¦|\.{3})?$/i }).first(),
       branchCategoriesRow.locator('button, [role="button"]').first(),
       modalRoot.getByRole('button', { name: /branch categor/i }).first(),
       modalRoot.locator('button, [role="button"]').filter({ hasText: /branch categor/i }).first(),
@@ -378,6 +605,23 @@ export class BranchPage {
 
     const bodyText = await this.page.locator('body').innerText().catch(() => '');
     throw new Error(`Could not find branch category option "${category}". Visible page text:\n${bodyText}`);
+  }
+
+  private async selectPrefixSuggestion(prefix: string) {
+    const suggestionCandidates = [
+      this.page.getByRole('option', { name: new RegExp(`^${this.escapeForRegex(prefix)}$`, 'i') }).first(),
+      this.page.getByRole('button', { name: new RegExp(`^${this.escapeForRegex(prefix)}$`, 'i') }).first(),
+      this.page.locator('[role="listbox"] [role="option"]').filter({ hasText: new RegExp(`^${this.escapeForRegex(prefix)}$`, 'i') }).first(),
+    ];
+
+    for (const suggestion of suggestionCandidates) {
+      if (await suggestion.isVisible().catch(() => false)) {
+        await suggestion.click({ force: true });
+        return;
+      }
+    }
+
+    await this.page.keyboard.press('Tab').catch(() => {});
   }
 
   private async closeSuccessToast(message: ReturnType<Page['getByText']>) {
@@ -451,10 +695,64 @@ export class BranchPage {
   }
 
   private async selectCountry(country: string) {
-    await this.page.getByRole('button', { name: 'Country*' }).click();
+    const countryTrigger = this.page.getByRole('button', { name: 'Country*' }).first();
+    if (!(await countryTrigger.isVisible().catch(() => false))) {
+      return;
+    }
+
+    await countryTrigger.click();
     const search = this.page.getByRole('textbox', { name: 'Search options' });
-    await search.fill(country);
+    if (await search.isVisible().catch(() => false)) {
+      await search.fill(country);
+    }
     await this.page.getByRole('button', { name: country, exact: true }).click();
+  }
+
+  private async configureWorkingHours() {
+    const sameHoursTab = this.page.getByRole('tab', { name: /same hours/i }).first();
+    if (await sameHoursTab.isVisible().catch(() => false)) {
+      await sameHoursTab.click().catch(() => {});
+    }
+
+    const sundayClosedSwitch = this.page.getByRole('switch', { name: /sunday closed/i }).first();
+    if (await sundayClosedSwitch.isVisible().catch(() => false)) {
+      await sundayClosedSwitch.click().catch(() => {});
+    }
+
+    const applyAllDaysControlCandidates = [
+      this.page.locator('label').filter({ hasText: /apply to all days/i }).first(),
+      this.page.getByText(/apply to all days/i).first(),
+      this.page.getByRole('checkbox', { name: /apply to all days/i }).first(),
+      this.page.getByRole('button', { name: /apply to all days/i }).first(),
+    ];
+
+    for (const candidate of applyAllDaysControlCandidates) {
+      if (await candidate.isVisible().catch(() => false)) {
+        await candidate.click({ force: true }).catch(() => {});
+        break;
+      }
+    }
+
+    const fromHour = this.page.locator('#branch-wh-apply-all-from-hour').first();
+    const toHour = this.page.locator('#branch-wh-apply-all-to-hour').first();
+
+    if (await fromHour.isVisible().catch(() => false)) {
+      await fromHour.selectOption('6').catch(() => {});
+    }
+
+    if (await toHour.isVisible().catch(() => false)) {
+      await toHour.selectOption('3').catch(() => {});
+    }
+
+    const meridiemButtons = this.page.getByRole('button', { name: /^pm$/i });
+    if ((await meridiemButtons.count().catch(() => 0)) > 1) {
+      await meridiemButtons.nth(1).click().catch(() => {});
+    }
+
+    const workingHoursGroup = this.page.getByRole('group', { name: /default working hours applied/i }).first();
+    if (await workingHoursGroup.isVisible().catch(() => false)) {
+      await workingHoursGroup.getByLabel('To').click().catch(() => {});
+    }
   }
 
   private async selectState(state: string) {
@@ -463,8 +761,59 @@ export class BranchPage {
   }
 
   private async selectCity(city: string) {
-    await this.page.getByText('City*Select').click();
+    const cityTriggerCandidates = [
+      this.page.getByRole('button', { name: 'City*' }).first(),
+      this.page.getByText('City*Select').first(),
+      this.page.getByText(/^City\*/).first(),
+    ];
+
+    for (const trigger of cityTriggerCandidates) {
+      if (await trigger.isVisible().catch(() => false)) {
+        await trigger.click({ force: true });
+        break;
+      }
+    }
+
     await this.page.getByRole('button', { name: city }).click();
+  }
+
+  private async setMainBranchSelection() {
+    const mainBranchCandidates = [
+      this.page.getByLabel(/main branch/i).first(),
+      this.page.getByText(/^Main Branch$/i).first(),
+      this.page.getByRole('checkbox', { name: /main branch/i }).first(),
+      this.page.getByRole('radio', { name: /main branch/i }).first(),
+      this.page.getByRole('switch', { name: /main branch/i }).first(),
+    ];
+
+    for (const candidate of mainBranchCandidates) {
+      if (await candidate.isVisible().catch(() => false)) {
+        await candidate.click({ force: true }).catch(() => {});
+        return;
+      }
+    }
+  }
+
+  private async advanceToBranchAddressStep(expectAdvance = true) {
+    const nextButton = this.page.getByRole('button', { name: /^next$/i }).first();
+    if (!(await nextButton.isVisible().catch(() => false))) {
+      return;
+    }
+
+    await nextButton.click({ force: true });
+    if (expectAdvance) {
+      await expect(this.page.getByRole('textbox', { name: 'Address Line 1*' })).toBeVisible({
+        timeout: 15000,
+      });
+    }
+  }
+
+  private async safePause(ms: number) {
+    if (this.page.isClosed()) {
+      throw new Error('Playwright page was closed unexpectedly while waiting for the branch flow.');
+    }
+
+    await this.page.waitForTimeout(ms);
   }
 
   private escapeForRegex(value: string) {

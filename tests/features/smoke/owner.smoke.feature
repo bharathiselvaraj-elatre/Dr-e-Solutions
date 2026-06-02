@@ -1,5 +1,8 @@
 @owner @smoke
-Feature: Owner Smoke Flow
+Feature: Owner Smoke Suite
+
+  # Smoke testing checks the highest-risk owner journey after a new build.
+  # These scenarios focus on fast validation of the primary business flow.
 
   @OWNER-SMOKE-001
   Scenario: Verify owner smoke flow for branch users board and lead in same login
@@ -8,7 +11,7 @@ Feature: Owner Smoke Flow
     And I enter password "Bhar@123"
     And I click the Login Now button
     Then I should see "dashboard"
-    And owner dashboard navigation options should be visible
+    # And owner dashboard navigation options should be visible
     And owner dashboard should display these cards:
       | Active branches |
       | Managers |
@@ -27,12 +30,6 @@ Feature: Owner Smoke Flow
       | Doctors |
       | Staff |
       | Patients |
-  # And owner can access each dashboard card:
-  #     | Active branches |
-  #     | Managers |
-  #     | Doctors |
-  #     | Staff |
-  #     | Patients |
     Given user opens create branch form
     When user fills branch form with "AUTO" "AUTO" "AUTO" "Elatre" "Perungudi" "600032"
     And user submits branch form

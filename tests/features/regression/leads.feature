@@ -1,17 +1,21 @@
-Feature: Leads Functionality
+@leads @regression
+Feature: Leads Regression Suite
+
+  # Regression testing protects the lead workflows from breaking when the
+  # product changes. It covers both successful and validation-driven behavior.
 
   Background:
     Given user logs into dr.e solutions for branch flow
     And user opens existing board page
 
-  @leads @positive
+  @positive
   Scenario: Successful lead creation with auto generated data
     Given user opens add lead form
     When user fills lead form with auto generated data
     And user submits lead form
     Then user should see lead result "lead created"
 
-  @leads @negative
+  @negative
   Scenario Outline: Lead creation shows required validations for each mandatory field
     Given user opens add lead form
     When user fills lead form with valid data except "<field>"

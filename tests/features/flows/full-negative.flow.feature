@@ -1,6 +1,10 @@
-Feature: Ordered Auth To Setup Flows
+@flow @negative
+Feature: Full Negative Business Flow
 
-  @flow @SC03 @negative @signup
+  # Flow testing also validates end-to-end negative behavior across modules.
+  # This suite keeps full negative coverage in one dedicated place.
+
+  @SC03 @signup
   Scenario Outline: Signup negative flow shows validation messages without proceeding
     Given user is on signup page
     When user fills signup form with "<firstName>" "<lastName>" "<organization>" "<email>" "<mobile>" "<password>" "<confirmPassword>"
@@ -14,7 +18,7 @@ Feature: Ordered Auth To Setup Flows
       | Test      | User     | QA Org       | AUTO      | AUTO   | Bhar@123 | Other@123       | Passwords must match       |
       | Test      | User     | QA Org       | AUTO      |        | Bhar@123 | Bhar@123        | Mobile Number is required  |
 
-  @flow @SC04 @negative @login
+  @SC04 @login
   Scenario Outline: Login negative flow shows validation and authentication errors
     Given I open login page in a fresh session
     When I enter email "<email>"
@@ -28,7 +32,7 @@ Feature: Ordered Auth To Setup Flows
       | bharathiselvaraj.elatre@gmail.com | 123ABC!23  | Invalid email or password |
       |                                   |            | required                  |
 
-  @flow @SC05 @negative
+  @SC05
   Scenario Outline: Signup flow validates each required branch field
     Given runtime signup user is authenticated for setup flow
     Given user opens create branch form
@@ -47,7 +51,7 @@ Feature: Ordered Auth To Setup Flows
       | City           | City is required           |
       | Postal Code    | Postal code is required    |
 
-  @flow @SC05 @negative
+  @SC05
   Scenario Outline: Signup flow creates branch then validates each required user field
     Given runtime signup user is authenticated for setup flow
     Given user opens create branch form
@@ -75,7 +79,7 @@ Feature: Ordered Auth To Setup Flows
       | City           | City is required           |
       | Postal Code    | Postal code is required    |
 
-  @flow @SC06 @negative
+  @SC06
   Scenario Outline: Existing user flow validates each required branch field
     Given user logs into dr.e solutions for branch flow
     Given user opens create branch form
@@ -94,7 +98,7 @@ Feature: Ordered Auth To Setup Flows
       | City           | City is required           |
       | Postal Code    | Postal code is required    |
 
-  @flow @SC06 @negative
+  @SC06
   Scenario Outline: Existing user flow creates branch then validates each required user field
     Given user logs into dr.e solutions for branch flow
     Given user opens create branch form
@@ -106,7 +110,23 @@ Feature: Ordered Auth To Setup Flows
     And user submits create user form
     Then user should see user validation message "<message>"
 
-  @flow @SC07 @negative
+    Examples:
+      | field          | message                    |
+      | Branch         | Branch is required         |
+      | Role           | Role is required           |
+      | Title          | Title is required          |
+      | First Name     | First name is required     |
+      | Last Name      | Last name is required      |
+      | Email          | Email is required          |
+      | Mobile Number  | Mobile number is required  |
+      | Gender         | Gender is required         |
+      | Address Line 1 | Address line 1 is required |
+      | Country        | Country is required        |
+      | State          | State is required          |
+      | City           | City is required           |
+      | Postal Code    | Postal code is required    |
+
+  @SC07
   Scenario Outline: Signup flow validates each required board field
     Given runtime signup user is authenticated for setup flow
     Given user opens create branch form
@@ -124,7 +144,7 @@ Feature: Ordered Auth To Setup Flows
       | Description |
       | Status      |
 
-  @flow @SC08 @negative
+  @SC08
   Scenario Outline: Existing user flow validates each required board field
     Given user logs into dr.e solutions for branch flow
     Given user opens create branch form
@@ -142,7 +162,7 @@ Feature: Ordered Auth To Setup Flows
       | Description |
       | Status      |
 
-  @flow @SC09 @negative
+  @SC09
   Scenario Outline: Signup flow validates each required lead field
     Given runtime signup user is authenticated for setup flow
     Given user opens create branch form
@@ -166,7 +186,7 @@ Feature: Ordered Auth To Setup Flows
       | Email       |
       | Postal Code |
 
-  @flow @SC10 @negative
+  @SC10
   Scenario Outline: Existing user flow validates each required lead field
     Given user logs into dr.e solutions for branch flow
     Given user opens create branch form
@@ -189,19 +209,3 @@ Feature: Ordered Auth To Setup Flows
       | Mobile      |
       | Email       |
       | Postal Code |
-
-    Examples:
-      | field          | message                    |
-      | Branch         | Branch is required         |
-      | Role           | Role is required           |
-      | Title          | Title is required          |
-      | First Name     | First name is required     |
-      | Last Name      | Last name is required      |
-      | Email          | Email is required          |
-      | Mobile Number  | Mobile number is required  |
-      | Gender         | Gender is required         |
-      | Address Line 1 | Address line 1 is required |
-      | Country        | Country is required        |
-      | State          | State is required          |
-      | City           | City is required           |
-      | Postal Code    | Postal code is required    |

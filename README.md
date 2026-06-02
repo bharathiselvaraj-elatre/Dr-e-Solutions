@@ -1,74 +1,47 @@
-# Project Root
+# Dental CRM Automation
 
-Playwright + Cucumber test automation project structure:
+This repository contains the active automation project for Dental CRM.
+
+## Valid Structure
 
 ```text
-project-root/
+dr.e/
+|-- constants/
+|-- docs/
+|-- fixtures/
+|-- pages/
+|-- test-data/
+|-- tests/
+|   |-- features/
+|   |-- functional/
+|   `-- src/
+|-- ci-cd/
+|-- cucumber.js
 |-- package.json
 |-- playwright.config.ts
-|-- tsconfig.json
-|
-|-- features/
-|   |-- flows/
-|   |   |-- full-positive-flow.feature
-|   |   `-- full-negative-flow.feature
-|   |
-|   |-- auth/
-|   |   |-- login.feature
-|   |   `-- logout.feature
-|   |
-|   |-- branch/
-|   |   `-- branch.feature
-|   |
-|   |-- users/
-|   |   `-- users.feature
-|   |
-|   |-- board/
-|   |   `-- board.feature
-|   |
-|   `-- leads/
-|       `-- leads.feature
-|
-|-- src/
-|   |-- pages/
-|   |   |-- LoginPage.ts
-|   |   |-- DashboardPage.ts
-|   |   |-- BranchPage.ts
-|   |   |-- UsersPage.ts
-|   |   |-- BoardPage.ts
-|   |   |-- LeadsPage.ts
-|   |   `-- LogoutPage.ts
-|   |
-|   |-- step-definitions/
-|   |   |-- auth.steps.ts
-|   |   |-- branch.steps.ts
-|   |   |-- users.steps.ts
-|   |   |-- board.steps.ts
-|   |   |-- leads.steps.ts
-|   |   `-- common.steps.ts
-|   |
-|   |-- hooks/
-|   |   |-- before.ts
-|   |   |-- after.ts
-|   |   `-- world.ts
-|   |
-|   |-- utils/
-|   |   |-- config.ts
-|   |   |-- logger.ts
-|   |   |-- testData.ts
-|   |   `-- helpers.ts
-|   |
-|   `-- test-data/
-|       |-- login.json
-|       |-- branch.json
-|       |-- users.json
-|       |-- services.json
-|       `-- leads.json
-|
-|-- reports/
-|   |-- html/
-|   |-- json/
-|   `-- screenshots/
-|
-`-- README.md
+|-- runOrderedSuite.js
+|-- runSingleSuite.js
+`-- sendReport.js
 ```
+
+## Active Test Layers
+
+- `tests/features` and `tests/src`: main Cucumber + Playwright regression suite
+- `tests/functional/login.spec.ts`: standalone Playwright login validation
+
+## Useful Commands
+
+```powershell
+npm run test
+npm run test:sanity
+npm run test:smoke
+npm run test:regression
+npm run test:login:uiux
+npm run test:auth:flow:uiux:desktop
+npm run test:pw:functional
+```
+
+## Notes
+
+- Placeholder API, E2E, and UI/UX Playwright scaffolds were removed so the structure matches the files that actually run.
+- The root-level `pages/`, `fixtures/`, and `constants/` folders now keep only the files used by the remaining Playwright functional test.

@@ -25,9 +25,21 @@ $env:SLOWMO='200'
 ## Main Suite
 
 - `npm run test`: run the default cucumber suite.
+- `npm run test:smoke`: run all smoke suites except `@manual` scenarios.
+- `npm run test:sanity`: run the sanity suite.
+- `npm run test:regression`: run the regression suite.
+- `npm run test:pw:functional`: run the standalone Playwright login validation.
 - `npm run test:ordered`: run the ordered suite flow.
-- `npm run test:report`: run the ordered suite/report flow.
+- `npm run test:report`: send the latest failure report from `reports/cucumber-report.json`.
 - `npm run report:cucumber`: generate cucumber report output.
+
+## Report Environment Variables
+
+- `REPORT_EMAIL_FROM`: Gmail sender address for failure emails.
+- `REPORT_EMAIL_TO`: recipient address for failure emails.
+- `REPORT_EMAIL_APP_PASSWORD`: Gmail app password for the sender account.
+- `SLACK_WEBHOOK_URL`: Slack webhook URL for failure notifications.
+- `SLACK_CHANNEL`: optional Slack channel override.
 
 ## Feature Suites
 
@@ -40,6 +52,7 @@ $env:SLOWMO='200'
 - `npm run test:feature:services`: run services feature mapping.
 - `npm run test:feature:leads`: run leads feature.
 - `npm run test:feature:frontdesk`: run frontdesk smoke feature.
+- `npm run test:feature:dashboard`: run dashboard feature.
 - `npm run test:feature:flow:positive`: run positive flow feature.
 - `npm run test:feature:flow:negative`: run negative flow feature.
 

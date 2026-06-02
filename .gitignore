@@ -9,6 +9,7 @@ node_modules/
 
 # Cucumber reports
 /reports/
+/.env
 
 # IDE artifacts
 /tests/.vs/

@@ -1,6 +1,10 @@
-Feature: Ordered Auth To Setup Flows
+@flow @positive
+Feature: Full Positive Business Flow
 
-  @flow @SC01 @positive
+  # Flow testing validates an end-to-end business journey across multiple
+  # modules. This file keeps the complete positive path in one place.
+
+  @SC01
   Scenario: Signup positive flow creates branch and all required users
     Given user is on signup page
     When user fills signup form with runtime generated signup data
@@ -31,7 +35,7 @@ Feature: Ordered Auth To Setup Flows
     And user submits lead form
     Then user should see lead result "lead created"
 
-  @flow @SC02 @positive
+  @SC02
   Scenario: Existing user login positive flow creates branch and all required users
     Given I open login page in a fresh session
     When I enter email "bharathiselvaraj.elatre@gmail.com"

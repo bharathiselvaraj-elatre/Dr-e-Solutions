@@ -10,6 +10,11 @@
     "skipLibCheck": true
   },
   "include": [
+    "pages/**/*.ts",
+    "test-data/**/*.json",
+    "fixtures/**/*.ts",
+    "constants/**/*.ts",
+    "tests/**/*.ts",
     "tests/src/**/*.ts"
   ]
 }

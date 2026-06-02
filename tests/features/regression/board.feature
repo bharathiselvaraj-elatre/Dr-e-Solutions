@@ -1,5 +1,8 @@
-@board
-Feature: Board Functionality
+@board @regression
+Feature: Board Regression Suite
+
+  # Regression testing confirms board creation behavior remains intact across
+  # releases, including both happy path and required-field checks.
 
   Background:
     Given user logs into dr.e solutions for branch flow
@@ -8,14 +11,14 @@ Feature: Board Functionality
     And user submits branch form
     Then user should see branch result "branch created"
 
-  @board @positive
+  @positive
   Scenario: Successful board creation with auto generated data
     Given user opens create board form
     When user fills board form with auto generated data
     And user submits board form
     Then user should see board result "board created"
 
-  @board @negative
+  @negative
   Scenario: Board creation shows required validations when mandatory fields are empty
     Given user opens create board form
     When user fills board form with valid data except "Board Name"

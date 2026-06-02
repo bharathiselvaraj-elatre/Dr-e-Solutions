@@ -118,8 +118,8 @@ export function generateBranchTestData(): BranchTestData {
     postalCode: '600032',
     categories: ['orthodontics', 'endodontics'],
     country: 'India',
-    state: 'Andaman and Nicobar Islands',
-    city: 'Bamboo Flat',
+    state: 'Assam',
+    city: 'Amguri',
   };
 }
 

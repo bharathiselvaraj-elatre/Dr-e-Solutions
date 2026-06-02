@@ -6,7 +6,6 @@ import { loadRuntimeCredentials, saveRuntimeCredentials } from '../utils/runtime
 
 const SIGNUP_URL = 'https://dev-solutions.dr-e.com/sign-up';
 const LOGIN_URL = 'https://dev-solutions.dr-e.com/login';
-const DASHBOARD_URL = 'https://dev-solutions.dr-e.com/dashboard';
 const DEFAULT_LOGIN_EMAIL =
   process.env.DRE_LOGIN_EMAIL ?? process.env.DRE_BRANCH_LOGIN_EMAIL ?? 'bharathiselvaraj.elatre@gmail.com';
 const DEFAULT_LOGIN_PASSWORD =
@@ -83,12 +82,44 @@ function getSignupPage(world: CustomWorld) {
   return new SignupPage(world.page);
 }
 
+async function safeWait(page: CustomWorld['page'], ms: number) {
+  if (!page || page.isClosed()) {
+    return;
+  }
+
+  await page.waitForTimeout(ms).catch(() => {});
+}
+
+async function authenticateWithCredentials(world: CustomWorld, email: string, password: string) {
+  if (!world.booking || !world.context) {
+    throw new Error('Playwright page was not initialized by the test hooks.');
+  }
+
+  await world.booking.navigate(LOGIN_URL);
+  await world.booking.enterEmail(email);
+  await world.booking.enterPassword(password);
+  await world.booking.clickLogin();
+  await world.booking.waitForAuthenticationCheckpoint();
+
+  if (await world.booking.isOtpPageVisible()) {
+    await world.booking.enterOtp(generateOTP());
+  }
+
+  await world.booking.verifyDashboard();
+  await world.context.storageState({ path: world.authFile });
+}
+
 async function ensureLoginPage(world: CustomWorld) {
   if (!world.page || !world.booking) {
     throw new Error('Playwright page was not initialized by the test hooks.');
   }
 
   if (world.page.url() === 'about:blank') {
+    await world.booking.navigate(LOGIN_URL);
+    return;
+  }
+
+  if (!(await world.booking.isLoginPageVisible())) {
     await world.booking.navigate(LOGIN_URL);
   }
 }
@@ -98,59 +129,7 @@ async function ensureRuntimeSignupSession(world: CustomWorld) {
     throw new Error('Playwright page was not initialized by the test hooks.');
   }
 
-  await world.booking.navigate(DASHBOARD_URL);
-  if (!(await world.booking.isLoginPageVisible())) {
-    await world.booking.verifyDashboard();
-    return;
-  }
-
-  try {
-    const runtimeCredentials = world.runtimeCredentials ?? loadRuntimeCredentials();
-    world.runtimeCredentials = runtimeCredentials;
-
-    await world.booking.navigate(LOGIN_URL);
-    await world.booking.enterEmail(runtimeCredentials.email);
-    await world.booking.enterPassword(runtimeCredentials.password);
-    await world.booking.clickLogin();
-    await world.booking.waitForAuthenticationCheckpoint();
-
-    if (await world.booking.isOtpPageVisible()) {
-      await world.booking.enterOtp(generateOTP());
-    }
-
-    await world.booking.verifyDashboard();
-    await world.context.storageState({ path: world.authFile });
-    return;
-  } catch {
-    // Fall back to creating a fresh signup user when no reusable runtime user exists.
-  }
-
-  const signupPage = getSignupPage(world);
-  const runtimeSignupData = buildRuntimeSignupData();
-  world.runtimeCredentials = {
-    email: runtimeSignupData.email,
-    password: runtimeSignupData.password,
-    firstName: runtimeSignupData.firstName,
-    lastName: runtimeSignupData.lastName,
-    organization: runtimeSignupData.organization,
-    mobile: runtimeSignupData.mobile,
-  };
-
-  saveRuntimeCredentials(world.runtimeCredentials);
-
-  await signupPage.navigate(SIGNUP_URL);
-  await signupPage.fillSignupForm(runtimeSignupData);
-  await signupPage.clickRegister();
-
-  try {
-    await signupPage.verifyOtpPage();
-    await signupPage.enterOtp(generateOTP());
-  } catch {
-    // Continue when signup already redirects straight to the dashboard.
-  }
-
-  await signupPage.verifyDashboard();
-  await world.context.storageState({ path: world.authFile });
+  await authenticateWithCredentials(world, DEFAULT_LOGIN_EMAIL, DEFAULT_LOGIN_PASSWORD);
 }
 
 Given('I navigate to the login page', async function (this: CustomWorld) {
@@ -165,12 +144,10 @@ Given('I open login page in a fresh session', async function (this: CustomWorld)
 
   await this.context.clearCookies();
   await this.booking.navigate(LOGIN_URL);
-  await this.page
-    .evaluate(() => {
-      window.localStorage.clear();
-      window.sessionStorage.clear();
-    })
-    .catch(() => {});
+  await this.page.evaluate(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  }).catch(() => {});
   await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
 });
 
@@ -194,6 +171,11 @@ When('I enter password {string}', async function (this: CustomWorld, password: s
 
 When('I click the Login Now button', async function (this: CustomWorld) {
   await this.booking!.clickLogin();
+});
+
+When('I toggle password visibility on the login page', async function (this: CustomWorld) {
+  await ensureLoginPage(this);
+  await this.booking!.verifyPasswordToggleBehavior();
 });
 
 When('I enter dynamic OTP if OTP page is displayed', async function (this: CustomWorld) {
@@ -295,13 +277,13 @@ Then('I should see {string}', async function (this: CustomWorld, expected: strin
         try {
           await this.booking!.enterOtp(generateOTP());
         } catch {
-          await this.page?.waitForTimeout(2000);
+          await safeWait(this.page, 2000);
         }
       }
 
       await this.booking!.verifyDashboard();
     } catch {
-      await this.page?.waitForTimeout(2500);
+      await safeWait(this.page, 2500);
       await this.booking!.verifyDashboard();
     }
 
@@ -327,6 +309,42 @@ Then('I should see {string}', async function (this: CustomWorld, expected: strin
 
   const bodyText = await this.booking!.getVisibleBodyText();
   throw new Error(`Unhandled expected state "${expected}". Visible page text:\n${bodyText}`);
+});
+
+Then('the login page should satisfy desktop UX expectations', async function (this: CustomWorld) {
+  await ensureLoginPage(this);
+  await this.booking!.verifyLoginPageDesktopUx();
+});
+
+Then('the login page should satisfy mobile UX expectations', async function (this: CustomWorld) {
+  await ensureLoginPage(this);
+  await this.booking!.verifyLoginPageMobileUx();
+});
+
+Then('the login OTP page should satisfy UX expectations', async function (this: CustomWorld) {
+  const expectedEmail = this.runtimeCredentials?.email ?? DEFAULT_LOGIN_EMAIL;
+  await this.booking!.verifyOtpPageUx(expectedEmail);
+});
+
+Then('the signup page should satisfy UX expectations', async function (this: CustomWorld) {
+  const signupPage = getSignupPage(this);
+  await signupPage.verifySignupPageDesktopUx();
+});
+
+Then('the signup page should satisfy desktop UX expectations', async function (this: CustomWorld) {
+  const signupPage = getSignupPage(this);
+  await signupPage.verifySignupPageDesktopUx();
+});
+
+Then('the signup page should satisfy mobile UX expectations', async function (this: CustomWorld) {
+  const signupPage = getSignupPage(this);
+  await signupPage.verifySignupPageMobileUx();
+});
+
+Then('the signup OTP page should satisfy UX expectations', async function (this: CustomWorld) {
+  const signupPage = getSignupPage(this);
+  const expectedEmail = this.runtimeCredentials?.email;
+  await signupPage.verifyOtpPageUx(expectedEmail);
 });
 
 Then('user should see signup state {string}', async function (this: CustomWorld, expected: string) {

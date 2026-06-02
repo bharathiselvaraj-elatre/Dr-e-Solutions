@@ -10,7 +10,7 @@ export class BoardPage {
     await this.page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
 
     const readyIndicators = [
-      this.page.getByRole('button', { name: 'Create Board' }).first(),
+      this.getCreateBoardTrigger(),
       this.page.getByRole('button', { name: /add lead/i }).first(),
       this.page.getByRole('button', { name: /switch branch/i }).first(),
       this.page.getByText(/board/i).first(),
@@ -82,7 +82,8 @@ export class BoardPage {
   }
 
   async openCreateBoardForm(preferredBranchName?: string) {
-    const createBoardButton = this.page.getByRole('button', { name: 'Create Board' }).first();
+    await this.dismissBlockingModalIfPresent();
+    const createBoardButton = this.getCreateBoardTrigger();
 
     if (!(await createBoardButton.isVisible().catch(() => false))) {
       await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
@@ -94,7 +95,7 @@ export class BoardPage {
       const branchSwitched = await this.switchToBranchWithoutBoard(preferredBranchName);
       if (branchSwitched && (await createBoardButton.isVisible().catch(() => false))) {
         await createBoardButton.click();
-        await expect(this.page.getByRole('textbox', { name: 'Board Name*' })).toBeVisible({ timeout: 10000 });
+        await this.waitForBoardComposerToBeReady();
         return;
       }
     }
@@ -105,18 +106,15 @@ export class BoardPage {
     }
 
     await createBoardButton.click();
-    await expect(this.page.getByRole('textbox', { name: 'Board Name*' })).toBeVisible({ timeout: 10000 });
+    await this.waitForBoardComposerToBeReady();
   }
 
   async fillBoardForm(board: BoardTestData, missingField?: string) {
+    await this.ensureBoardFormFieldsAreOpen();
     const normalizedField = missingField?.trim().toLowerCase();
 
-    await this.page.getByRole('textbox', { name: 'Board Name*' }).fill(
-      normalizedField === 'board name' ? '' : board.boardName
-    );
-    await this.page.getByRole('textbox', { name: 'Description*' }).fill(
-      normalizedField === 'description' ? '' : board.description
-    );
+    await this.getBoardNameField().fill(normalizedField === 'board name' ? '' : board.boardName);
+    await this.getBoardDescriptionField().fill(normalizedField === 'description' ? '' : board.description);
 
     if (normalizedField !== 'status') {
       for (const status of board.statuses) {
@@ -126,7 +124,28 @@ export class BoardPage {
   }
 
   async submitBoardForm() {
-    await this.page.getByRole('button', { name: 'Create', exact: true }).click();
+    const submitCandidates = [
+      this.page.getByRole('button', { name: /^create$/i }).last(),
+      this.page.getByRole('button', { name: /^create board$/i }).last(),
+      this.page.getByRole('button', { name: /^save$/i }).last(),
+      this.page.locator('button').filter({ hasText: /create board|create|save/i }).last(),
+    ];
+
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      for (const candidate of submitCandidates) {
+        if (await candidate.isVisible().catch(() => false)) {
+          await candidate.scrollIntoViewIfNeeded().catch(() => {});
+          await candidate.click({ force: true, timeout: 5000 });
+          return;
+        }
+      }
+
+      await this.page.waitForTimeout(250);
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Could not find a board form submit button. Visible page text:\n${bodyText}`);
   }
 
   async verifyBoardCreated(board: BoardTestData) {
@@ -160,7 +179,12 @@ export class BoardPage {
   }
 
   private async addStatus(status: BoardStatusData) {
-    await this.page.getByRole('button', { name: 'Add Status' }).click();
+    await this.dismissBlockingModalIfPresent();
+    const addStatusButton = this.page
+      .getByRole('button', { name: /add status|new status/i })
+      .or(this.page.locator('button').filter({ hasText: /add status|new status/i }))
+      .first();
+    await addStatusButton.click();
     await this.page.getByRole('textbox', { name: 'Name*', exact: true }).fill(status.name);
 
     if (status.type) {
@@ -177,33 +201,47 @@ export class BoardPage {
       }
     }
 
-    await this.page.getByRole('button', { name: 'Add status to list' }).click();
+    const addToListButton = this.page
+      .getByRole('button', { name: /add status to list|add to list|save status|done/i })
+      .or(this.page.locator('button').filter({ hasText: /add status to list|add to list|save status|done/i }))
+      .last();
+    await addToListButton.click({ force: true });
+    await this.dismissBlockingModalIfPresent();
   }
 
   private async dismissBlockingModalIfPresent() {
-    const modal = this.page.locator('.modal:visible, [role="dialog"]:visible').last();
+    const modals = this.page.locator(
+      '.modal:visible, [role="dialog"]:visible, .delete-confirm-modal:visible, .crm-templates-page__delete-confirm-over-drawer:visible'
+    );
+    const modalCount = await modals.count().catch(() => 0);
 
-    if (!(await modal.isVisible().catch(() => false))) {
-      return;
-    }
+    for (let index = modalCount - 1; index >= 0; index--) {
+      const modal = modals.nth(index);
+      if (!(await modal.isVisible().catch(() => false))) {
+        continue;
+      }
 
-    const closeCandidates = [
-      modal.getByRole('button', { name: /close|cancel|done/i }).first(),
-      modal.locator('button[aria-label="Close"], button[aria-label="close"]').first(),
-    ];
+      const closeCandidates = [
+        modal.getByRole('button', { name: /close|cancel|done|no|stay|keep editing|continue editing/i }).first(),
+        modal.locator('button[aria-label="Close"], button[aria-label="close"]').first(),
+        modal.locator('button').filter({ hasText: /close|cancel|done|no|stay|keep editing|continue editing/i }).first(),
+      ];
 
-    for (const button of closeCandidates) {
-      if (await button.isVisible().catch(() => false)) {
-        await button.click({ force: true }).catch(() => {});
-        await modal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
-        if (!(await modal.isVisible().catch(() => false))) {
-          return;
+      for (const button of closeCandidates) {
+        if (await button.isVisible().catch(() => false)) {
+          await button.click({ force: true }).catch(() => {});
+          await modal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+          if (!(await modal.isVisible().catch(() => false))) {
+            break;
+          }
         }
       }
-    }
 
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await modal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+      if (await modal.isVisible().catch(() => false)) {
+        await this.page.keyboard.press('Escape').catch(() => {});
+        await modal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+      }
+    }
   }
 
   private escapeForRegex(value: string) {
@@ -220,7 +258,7 @@ export class BoardPage {
 
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
-      const createBoardButton = this.page.getByRole('button', { name: 'Create Board' }).first();
+      const createBoardButton = this.getCreateBoardTrigger();
       const addLeadButton = this.page.getByRole('button', { name: /add lead/i }).first();
       const pageText = (await this.page.locator('body').innerText().catch(() => '')).toLowerCase();
 
@@ -238,6 +276,86 @@ export class BoardPage {
 
   private getSwitchBranchButton() {
     return this.page.getByRole('button', { name: /switch branch/i }).first();
+  }
+
+  private getCreateBoardTrigger() {
+    return this.page
+      .getByRole('button', { name: /create board|add board|new board/i })
+      .or(this.page.locator('button, a').filter({ hasText: /create board|add board|new board/i }))
+      .first();
+  }
+
+  private async waitForBoardComposerToBeReady() {
+    await this.dismissBlockingModalIfPresent();
+    const readySignals = [
+      this.page.getByText(/create your board for/i).first(),
+      this.getBoardNameField(),
+      this.getBoardDescriptionField(),
+      this.page.getByRole('button', { name: /add status|new status/i }).first(),
+    ];
+
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      for (const signal of readySignals) {
+        if (await signal.isVisible().catch(() => false)) {
+          return;
+        }
+      }
+
+      await this.page.waitForTimeout(250);
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Board form did not become ready. Visible page text:\n${bodyText}`);
+  }
+
+  private async ensureBoardFormFieldsAreOpen() {
+    const nameField = this.getBoardNameField();
+    if (await nameField.isVisible().catch(() => false)) {
+      return;
+    }
+
+    const splashCreateButton = this.page
+      .getByRole('button', { name: /^create board$/i })
+      .or(this.page.locator('button, a').filter({ hasText: /^create board$/i }))
+      .first();
+
+    if (await splashCreateButton.isVisible().catch(() => false)) {
+      await splashCreateButton.click({ force: true }).catch(() => {});
+      await this.dismissBlockingModalIfPresent();
+    }
+
+    const readySignals = [this.getBoardNameField(), this.getBoardDescriptionField()];
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      for (const signal of readySignals) {
+        if (await signal.isVisible().catch(() => false)) {
+          return;
+        }
+      }
+
+      await this.page.waitForTimeout(250);
+    }
+
+    const bodyText = await this.page.locator('body').innerText().catch(() => '');
+    throw new Error(`Board fields did not become visible. Visible page text:\n${bodyText}`);
+  }
+
+  private getBoardNameField() {
+    return this.page
+      .locator('input[name="templateName"]')
+      .or(this.page.locator('input[placeholder*="Dental Appointment Board"]'))
+      .or(this.page.getByRole('textbox', { name: /board name/i }))
+      .first();
+  }
+
+  private getBoardDescriptionField() {
+    return this.page
+      .locator('textarea[name="description"]')
+      .or(this.page.getByRole('textbox', { name: /description/i }))
+      .or(this.page.locator('textarea[placeholder*="Track patient appointments"]'))
+      .or(this.page.locator('textarea').first())
+      .first();
   }
 
   private async switchToBranchWithoutBoard(preferredBranchName?: string) {
@@ -260,7 +378,7 @@ export class BoardPage {
       });
       await this.waitForBranchSelection(branchName);
 
-      const createBoardButton = this.page.getByRole('button', { name: 'Create Board' }).first();
+      const createBoardButton = this.getCreateBoardTrigger();
       if (await createBoardButton.isVisible().catch(() => false)) {
         return true;
       }

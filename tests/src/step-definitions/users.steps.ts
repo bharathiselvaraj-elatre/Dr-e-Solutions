@@ -1,6 +1,7 @@
 import { Given, Then, When } from '@cucumber/cucumber';
 import { UserPage } from '../pages/UsersPage';
 import { CustomWorld } from '../hooks/world';
+import { logRegressionStep } from '../utils/testLogger';
 import { generateUserTestDataForRole } from '../utils/testData';
 
 function getUserPage(world: CustomWorld) {
@@ -13,8 +14,9 @@ function getUserPage(world: CustomWorld) {
 
 Given('user opens create user form', async function (this: CustomWorld) {
   const userPage = getUserPage(this);
-  await userPage.navigateToPeople();
+  await userPage.navigateToPeople(this.branchData?.branchName);
   await userPage.openCreateUserForm();
+  await logRegressionStep(this, 'user', 'opened create user form');
 });
 
 When('user fills create user form with auto generated {string} data', async function (this: CustomWorld, role: string) {
@@ -23,6 +25,7 @@ When('user fills create user form with auto generated {string} data', async func
   if (this.branchData?.branchName) {
     this.userData.branchName = this.branchData.branchName;
   }
+  await logRegressionStep(this, 'user', 'prepared user create data', this.userData);
   await userPage.fillCreateUserForm(this.userData);
 });
 
@@ -34,12 +37,17 @@ When(
     if (this.branchData?.branchName) {
       this.userData.branchName = this.branchData.branchName;
     }
+    await logRegressionStep(this, 'user', 'prepared negative user data', {
+      missingField,
+      ...this.userData,
+    });
     await userPage.fillCreateUserFormWithMissingField(this.userData, missingField);
   }
 );
 
 When('user submits create user form', async function (this: CustomWorld) {
   const userPage = getUserPage(this);
+  await logRegressionStep(this, 'user', 'submitting user form', this.userData);
   await userPage.submitCreateUserForm();
 });
 
@@ -53,11 +61,13 @@ Then('user should see user result {string}', async function (this: CustomWorld, 
     }
 
     await userPage.verifyUserCreated(this.userData);
+    await logRegressionStep(this, 'user', 'user creation verified with saved data', this.userData);
     return;
   }
 
   if (normalized === 'required validations displayed') {
     await userPage.verifyRequiredValidations();
+    await logRegressionStep(this, 'user', 'required validations verified');
     return;
   }
 
@@ -67,4 +77,7 @@ Then('user should see user result {string}', async function (this: CustomWorld, 
 Then('user should see user validation message {string}', async function (this: CustomWorld, expected: string) {
   const userPage = getUserPage(this);
   await userPage.verifyRequiredValidation(expected);
+  await logRegressionStep(this, 'user', 'specific validation verified', {
+    message: expected,
+  });
 });

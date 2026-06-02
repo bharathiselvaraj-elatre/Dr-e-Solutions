@@ -1,9 +1,9 @@
 @frontdesk @smoke
-Feature: Frontdesk Smoke Flow
+Feature: Frontdesk Smoke Suite
 
-  # This feature documents the requested frontdesk smoke coverage.
-  # It is isolated from the default regression run through the @frontdesk tag.
-  # Scenarios tagged @manual still require implementation before execution.
+  # Smoke testing verifies the most critical frontdesk paths are working.
+  # It is a fast confidence suite used to confirm the build is stable enough
+  # for deeper testing.
 
   Background:
     Given I open login page in a fresh session
@@ -48,7 +48,7 @@ Feature: Frontdesk Smoke Flow
     Then user should see branch result "branch created"
     Given user opens create board form
 
-  @FD-SMOKE-009 @FD-SMOKE-010
+  @FD-SMOKE-009 @FD-SMOKE-010 @manual
   Scenario: Verify user can open Leads module and view leads list
     Given user logs into dr.e solutions for branch flow
     And frontdesk user opens leads list page

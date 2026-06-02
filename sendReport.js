@@ -3,11 +3,11 @@ const nodemailer = require('nodemailer');
 
 const defaultReportPath = 'reports/cucumber-report.json';
 const defaultSummaryPath = 'reports/run-summary.json';
-const sender = 'bharathiselvaraj.elatre@gmail.com';
-const receiver = 'bharathiselvaraj@elatre.com';
-const appPassword = 'pbgi txgt kbtz sbsv'.replace(/\s+/g, '');
 const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL ?? '';
 const slackChannel = process.env.SLACK_CHANNEL ?? 'dr.e-automation';
+const emailSender = process.env.REPORT_EMAIL_FROM ?? '';
+const emailReceiver = process.env.REPORT_EMAIL_TO ?? '';
+const emailAppPassword = (process.env.REPORT_EMAIL_APP_PASSWORD ?? '').replace(/\s+/g, '');
 
 function loadJsonIfPresent(filePath, fallback) {
   if (!fs.existsSync(filePath)) {
@@ -49,9 +49,9 @@ async function sendSlackFailureReport({ summary, failedScenarios, reportPath }) 
 
   const summaryLines = summary
     ? [
-        `Run order: ${summary.order.join(' -> ')}`,
-        `Positive suite: ${summary.positive.passed}/${summary.positive.scenarios} passed, ${summary.positive.failed} failed`,
-        `Negative suite: ${summary.negative.passed}/${summary.negative.scenarios} passed, ${summary.negative.failed} failed`,
+        `Run order: ${(summary.order ?? []).join(' -> ')}`,
+        `Positive suite: ${summary.positive?.passed ?? 0}/${summary.positive?.scenarios ?? 0} passed, ${summary.positive?.failed ?? 0} failed`,
+        `Negative suite: ${summary.negative?.passed ?? 0}/${summary.negative?.scenarios ?? 0} passed, ${summary.negative?.failed ?? 0} failed`,
       ]
     : [];
 
@@ -125,47 +125,51 @@ async function sendFailureReport({
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: sender,
-      pass: appPassword,
-    },
-  });
-
-  const summaryLines = summary
-    ? [
-        `Run order: ${summary.order.join(' -> ')}`,
-        `Positive suite: ${summary.positive.passed}/${summary.positive.scenarios} passed, ${summary.positive.failed} failed`,
-        `Negative suite: ${summary.negative.passed}/${summary.negative.scenarios} passed, ${summary.negative.failed} failed`,
-      ]
-    : [];
-
-  const failureLines = failedScenarios
-    .slice(0, 15)
-    .map((failure, index) => `${index + 1}. ${failure.feature} -> ${failure.scenario} -> ${failure.step}`);
-
-  const text = [
-    'Automation execution completed with failures.',
-    ...summaryLines,
-    '',
-    'Failed scenarios:',
-    ...failureLines,
-    '',
-    `Detailed report: ${reportPath}`,
-  ].join('\n');
-
-  try {
-    const info = await transporter.sendMail({
-      from: sender,
-      to: receiver,
-      subject: 'Alert : Automation Test Failed',
-      text,
+  if (!emailSender || !emailReceiver || !emailAppPassword) {
+    console.log('Email notification not configured. Skipping email notification.');
+  } else {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: emailSender,
+        pass: emailAppPassword,
+      },
     });
 
-    console.log('Email sent:', info.response);
-  } catch (error) {
-    console.log('Error sending email:', error);
+    const summaryLines = summary
+      ? [
+          `Run order: ${(summary.order ?? []).join(' -> ')}`,
+          `Positive suite: ${summary.positive?.passed ?? 0}/${summary.positive?.scenarios ?? 0} passed, ${summary.positive?.failed ?? 0} failed`,
+          `Negative suite: ${summary.negative?.passed ?? 0}/${summary.negative?.scenarios ?? 0} passed, ${summary.negative?.failed ?? 0} failed`,
+        ]
+      : [];
+
+    const failureLines = failedScenarios
+      .slice(0, 15)
+      .map((failure, index) => `${index + 1}. ${failure.feature} -> ${failure.scenario} -> ${failure.step}`);
+
+    const text = [
+      'Automation execution completed with failures.',
+      ...summaryLines,
+      '',
+      'Failed scenarios:',
+      ...failureLines,
+      '',
+      `Detailed report: ${reportPath}`,
+    ].join('\n');
+
+    try {
+      const info = await transporter.sendMail({
+        from: emailSender,
+        to: emailReceiver,
+        subject: 'Alert : Automation Test Failed',
+        text,
+      });
+
+      console.log('Email sent:', info.response);
+    } catch (error) {
+      console.log('Error sending email:', error);
+    }
   }
 
   try {
